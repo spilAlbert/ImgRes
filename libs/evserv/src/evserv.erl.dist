@@ -1,0 +1,136 @@
+-module(evserv).
+-compile(export_all).
+
+-record(state, {events, clients}).
+
+-record(event, {name="", 
+		path="",
+		options="",
+		pid}).
+
+
+%% For more than one server, we need to register the process with the global module
+start() ->
+	register(?MODULE, Pid=spawn(?MODULE, init, [])),
+	Pid.
+
+start_global() ->
+        global:register_name(?MODULE, Pid=spawn(?MODULE, init, [])),
+        Pid.
+
+start_link() ->
+	register(?MODULE, Pid=spawn_link(?MODULE, init, [])),
+	Pid.
+
+terminate() ->
+	?MODULE ! shutdown.
+
+subscribe(Pid) ->
+	Ref = erlang:monitor(process,whereis(?MODULE)),
+	?MODULE ! {self(), Ref, {subscribe, Pid}},
+	receive
+		{Ref, ok} ->
+			{ok, Ref};
+		{'DOWN', Ref, process, _Pid, Reason} ->
+			{error, Reason}
+	after 5000 ->
+		{error,timeout}
+		end.
+
+
+add_event(Name, PathName, Options) ->
+	Ref = make_ref(),
+	?MODULE ! {self(), Ref, {add, Name, PathName, Options}},
+	receive 
+		{Ref, Msg} -> Msg
+	after 5000 ->
+		{error, timeout}
+	end.
+
+
+cancel(Name) ->
+	Ref = make_ref(),
+	?MODULE ! {self(), Ref, {cancel, Name}},
+	receive
+		{Ref, ok} -> ok
+	after 5000 ->
+		{error, timeout}
+	end.
+
+listen(Name,Delay) ->
+	receive
+		M = {done, Name, _NewPath} ->
+			[M | listen(Name,0)]
+	after	Delay*1000 ->
+		[]
+	end.
+
+
+%% Start - Internal functions
+
+send_to_clients(Msg, ClientDict ) ->
+		orddict:map(fun(_Ref,Pid) -> Pid ! Msg end, ClientDict).
+
+%% End - Internal functions
+
+loop(S = #state{}) ->
+	receive
+		%Subscribe handler
+		{Pid, MsgRef, {subscribe, Client}} ->
+			Ref = erlang:monitor(process, Client),
+			NewClients = orddict:store(Ref,Client, S#state.clients),
+			Pid ! {MsgRef, ok},
+			loop(S#state{clients=NewClients});
+
+
+		%Add Job Handler
+		{Pid, MsgRef, {add, Name, PathName, Options}} ->
+			EventPid = event:start_link(Name, PathName, Options),
+			NewEvents = orddict:store(Name,
+							#event{	name=Name,
+							pid=EventPid,
+							path=PathName,
+							options=Options},
+							S#state.events),
+			Pid ! {MsgRef, ok},
+			loop(S#state{events=NewEvents});
+		%Cancel Job Handler
+		{Pid, MsgRef, {cancel, Name}} ->
+			Events = case orddict:find(Name, S#state.events) of
+				{ok ,E} ->
+					event:cancel(E#event.pid),
+					orddict:erase(Name, S#state.events);
+				error ->
+					S#state.events
+				end,
+			Pid ! {MsgRef, ok},
+			loop(S#state{events=Events});
+
+		% Finalzing event handler
+		{done, Name, NewPath} ->
+			E = orddict:fetch(Name, S#state.events),
+			%%send_to_clients({done, E#event.name, E#event.description},
+			send_to_clients({done, E#event.name, NewPath},
+					S#state.clients),
+			NewEvents = orddict:erase(Name, S#state.events),
+			loop(S#state{events=NewEvents});
+		% Exit code
+		shutdown ->
+			exit(shutdown);
+		% Crash code
+		{'DOWN', Ref, process, _Pid, _Reason} ->
+			loop(S#state{clients=orddict:erase(Ref, S#state.clients)});
+		% Hot code change - not yet
+		%code_change ->
+		%	?MODULE:loop(S);
+		% Wat zeg jij?
+		Unknown ->
+			io:format("Unknown message: ~p~n",[Unknown]),
+			loop(S)
+	end.
+
+
+init() ->
+	%% We could include here some file loading - configurartion and such
+	loop(#state{events=orddict:new(),
+			clients=orddict:new()}).
