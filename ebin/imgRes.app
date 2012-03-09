@@ -1,0 +1,9 @@
+{application,imgRes,
+             [{description,"imgRes"},
+              {vsn,"0.1"},
+              {modules,[imageResize_web,imgRes,imgRes_app,imgRes_deps,
+                        imgRes_sup,imgRes_web]},
+              {registered,[]},
+              {mod,{imgRes_app,[]}},
+              {env,[]},
+              {applications,[kernel,stdlib,crypto]}]}.
