@@ -18,7 +18,6 @@ start(Options) ->
            end, 
     mochiweb_http:start([{name, ?MODULE}, {loop, Loop} | Options1]),
     client:start(erlang:whereis(?MODULE)).
-    %io:format("~n~n hey, I'm here ~p~n~n",[erlang:whereis(?MODULE)]). %%Aqui llamar a start client con el pid de erlang:whereis(?MODULE)
 
 stop() ->
     mochiweb_http:stop(?MODULE).
@@ -74,7 +73,7 @@ get_option(Option, Options) ->
 
 handle_file(Filename,ContentType) ->
 	% Random filename in tmp folder
-	TempFilename = "/tmp/" ++ atom_to_list(?MODULE) ++ integer_to_list(erlang:phash2(make_ref())),
+	TempFilename = "/tmp/www/" ++ atom_to_list(?MODULE) ++ integer_to_list(erlang:phash2(make_ref())),
 	{ok, File} = file:open(TempFilename, [raw,write]),
 	chunk_handler(Filename, ContentType, TempFilename, File).
 
@@ -96,10 +95,23 @@ upload_photo(Req) ->
     FileHandler = fun(Filename, ContentType) -> handle_file(Filename, ContentType) end,
     Files = mochiweb_multipart:parse_form(Req, FileHandler),
     {Filename,_ ,Location} = proplists:get_value("file", Files),
-    Action = {proplists:get_value("action", Files),proplists:get_value("sizex", Files),proplists:get_value("sizey", Files)},
-    %client:start(),
-    client:add_event(Filename,Location,Action),
-    [NewPath] = evserv:listen(Filename,5),
+
+    Operation = {proplists:get_value("action", Files) 
+             ,proplists:get_value("sizex", Files), 
+	     proplists:get_value("sizey", Files) },
+
+    Eval = proplists:is_defined("quality", Files),
+    if Eval == true -> 
+		Quality = {"quality", proplists:get_value("quality", Files)},
+		Action = [Operation,Quality];
+        true -> 
+		Quality = {"quality","95"},
+		Action = [Operation,Quality]
+    end,
+
+    Id = integer_to_list(element(3,now())),
+    client:add_event(Id,Location,Action),
+    [NewPath] = client:listen(Id,30),
     Req:ok({"text/html", [], "<p>Thank you for " ++ Filename ++ "</p> <p> <img src=\"" ++ element(3,NewPath) ++ "\"<img> </p><p>  <a href=\"imgresize\">Upload another?</a></p>"}).
 
 

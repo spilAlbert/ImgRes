@@ -49,7 +49,7 @@ loop(S = #state{}) ->
 
 		%Add Job Handler
 		{Pid, MsgRef, {add, Name, PathName, Options}} ->
-			io:format("New job arrives ~n"),
+			%io:format("New job arrives ~n"),
 			EventPid = event:start_link(Pid,Name, PathName, Options),
 			NewEvents = orddict:store(Name,
 							#event{	name=Name,
@@ -75,16 +75,16 @@ loop(S = #state{}) ->
 
 		% Finalzing event handler
 		{done, Name, NewPath} ->
-			io:format("Done message for "++ Name ++ " has arrived~n"),
+			%io:format("Done message for "++ Name ++ " has arrived~n"),
 			case orddict:find(Name, S#state.events) of
 				{ok,E} ->
-					io:format("Event for ~p : " ++ Name ++ " done ~n ",[E]),
-					io:format("Should arrive to : ~p~n ",[E#event.client]),
+					%io:format("Event for ~p : " ++ Name ++ " done ~n ",[E]),
+					%io:format("Should arrive to : ~p~n ",[E#event.client]),
 					E#event.client ! {done,E#event.name, NewPath},
 					NewEvents = orddict:erase(Name, S#state.events),
 					loop(S#state{events=NewEvents});
 				error ->
-					io:format("Not found :" ++ Name ++ "~n"),
+					io:format("Error, Name Not found :" ++ Name ++ "~n"),
 					%% In case we cancel an event and it fires at the same time... or others ghosts...
 					loop(S)
 			end;
@@ -101,7 +101,7 @@ loop(S = #state{}) ->
 		shutdown ->
 			exit(shutdown);
 		% Crash code
-		{'DOWN', Ref, process, _Pid, _Reason} ->
+		{'DOWN', _Ref, process, _Pid, _Reason} ->
 			loop(S#state{clients=orddict:erase(_Pid, S#state.clients)});
 		% Hot code change - not yet
 		%code_change ->
