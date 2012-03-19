@@ -1,0 +1,12 @@
+{application, token_factory,
+    [
+        {description, "A factory of auth tokens for SHP"},
+        {vsn, "0.0.1"},
+        {registered, []},
+        {applications, [
+                kernel,
+                stdlib
+            ]},
+        {modules, [token_factory]},
+        {env, []}
+    ]}.
